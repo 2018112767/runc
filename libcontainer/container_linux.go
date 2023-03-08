@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package libcontainer
@@ -1229,6 +1230,25 @@ func (c *linuxContainer) prepareCriuRestoreMounts(mounts []*configs.Mount) error
 	return nil
 }
 
+func myDebug(criuopts CriuOpts, file string) {
+	f, perr := os.Create(file)
+	defer f.Close()
+	if perr != nil {
+		fmt.Println(perr.Error())
+	} else {
+		//_, perr = f.WriteString(s.opts.ImagePath + "\n" + s.opts.ParentPath + "\n" + s.opts.WorkDir)
+		if criuopts.ShellJob {
+			f.WriteString("shell-job\n")
+		}
+		if criuopts.TcpEstablished {
+			f.WriteString("tcp-established\n")
+		}
+		if criuopts.LazyPages {
+			f.WriteString("lazy-pages\n")
+		}
+	}
+}
+
 func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -1265,6 +1285,27 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
 		return err
 	}
 	defer imageDir.Close()
+
+	m := make(map[string]string)
+	f, err := os.Open(criuOpts.ImagesDirectory + "/../restore_parameter.log")
+	if err == nil {
+		defer f.Close()
+		decoder := json.NewDecoder(f)
+		if err := decoder.Decode(&m); err != nil {
+			return err
+		}
+		if m["lazy-pages"] != "" {
+			criuOpts.LazyPages = true
+		}
+		if m["tcp-connect"] != "" {
+			criuOpts.TcpEstablished = true
+		}
+		if m["shell-job"] != "" {
+			criuOpts.ShellJob = true
+		}
+	}
+	myDebug(*criuOpts, "/etc/mylog4.log")
+
 	// CRIU has a few requirements for a root directory:
 	// * it must be a mount point
 	// * its parent must not be overmounted
